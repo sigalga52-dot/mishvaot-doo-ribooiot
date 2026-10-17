@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>חדר בריחה מתמטי</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- KaTeX CSS & JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    
+    <!-- Tone.js for Audio -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <!-- Canvas Confetti for Victory Screen -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* הקטנת הכתב של נוסחאות במסכים קטנים באופן רספונסיבי */
+        .katex {
+            font-size: clamp(1.2em, 5vw, 1.6em) !important;
+            direction: ltr;
+            display: inline-block;
+        }
+        
+        /* לאפשר גלילה במשוואות ארוכות במקום לגלוש החוצה */
+        .katex-display {
+            overflow-x: auto;
+            overflow-y: hidden;
+            max-width: 100%;
+            padding-bottom: 0.5rem;
+        }
+        
+        input[type="text"], input[type="password"] {
+            direction: ltr;
+        }
+        
+        /* Lock Animation Keyframes */
+        @keyframes unlock-bounce {
+            0% { transform: scale(0.8); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .animate-unlock {
+            animation: unlock-bounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="glass-panel p-8 rounded-2xl shadow-2xl max-w-md w-full text-center">
+        <h1 class="text-4xl font-bold text-blue-400 mb-4">חדר בריחה מתמטי</h1>
+        <p class="mb-6 text-gray-300 text-lg">
+            ברוכים הבאים! פתרו את 8 המשוואות כדי לפרוץ את המנעולים ולברוח מהחדר.<br><br>
+            <span class="text-sm text-gray-400">
+                * אם יש מספר פתרונות, הפרידו אותם בפסיק (למשל: 3, -3).<br>
+                * ניתן לכתוב שברים עשרוניים או שברים פשוטים.
+            </span>
+        </p>
+        
+        <div class="mb-6 flex gap-4">
+            <div class="flex-1">
+                <label for="student-name" class="block text-right text-sm font-medium text-gray-300 mb-2">שם התלמיד/ים:</label>
+                <input type="text" id="student-name" dir="rtl"
+                       class="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xl text-right"
+                       placeholder="הקלידו את שמכם...">
+            </div>
+            <div class="w-1/3">
+                <label for="student-id" class="block text-right text-sm font-medium text-gray-300 mb-2">מספר (1-20):</label>
+                <input type="number" id="student-id" min="1" max="20" dir="ltr"
+                       class="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xl text-center"
+                       placeholder="1-20">
+            </div>
+        </div>
+
+        <button onclick="startGame()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform hover:scale-105 active:scale-95 w-full text-xl">
+            התחל משחק
+        </button>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="glass-panel p-4 sm:p-8 rounded-2xl shadow-2xl max-w-xl w-full hidden relative overflow-hidden">
+        
+        <!-- Progress Bar -->
+        <div class="w-full bg-gray-700 rounded-full h-2.5 mb-4">
+            <div id="progress-bar" class="bg-blue-500 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-2xl font-bold text-blue-400">
+                מנעול <span id="level-display">1</span> / 8
+                <span id="backup-indicator" class="hidden text-sm bg-yellow-600 text-white px-2 py-1 rounded mr-2 animate-pulse">(שאלת חלופה)</span>
+            </h2>
+            <span class="text-sm bg-slate-700 px-3 py-1 rounded-full text-blue-200">ניקוד: <span id="score-display">0</span></span>
+        </div>
+        
+        <h3 id="greeting-text" class="text-lg text-gray-300 mb-4 font-semibold"></h3>
+
+        <!-- הקופסה של המשוואה עודכנה כדי למנוע חריגות -->
+        <div class="bg-slate-900 rounded-xl p-4 sm:p-8 mb-6 text-center shadow-inner min-h-[120px] flex items-center justify-center border border-slate-700 w-full overflow-hidden">
+            <div id="equation-container" class="text-xl sm:text-3xl text-white max-w-full w-full"></div>
+        </div>
+
+        <!-- Student Input Section -->
+        <div id="student-input-section">
+            <div class="mb-4">
+                <label for="answer-input" class="block text-sm font-medium text-gray-300 mb-2">הזן את הפתרון/ות שלך:</label>
+                <input type="text" id="answer-input" 
+                       class="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-xl"
+                       placeholder="למשל: 1, 2"
+                       onkeydown="if(event.key === 'Enter') checkAnswer()">
+            </div>
+
+            <button onclick="checkAnswer()" id="submit-btn" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg transition-all active:scale-95 text-lg">
+                בדוק תשובה
+            </button>
+            
+            <button onclick="showTreasureScreen()" id="final-stage-btn" class="hidden w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-lg shadow-lg transition-all active:scale-95 text-lg mt-4 animate-bounce">
+                עבור למסך הבא לקבלת ספרת הקוד האחרונה
+            </button>
+        </div>
+
+        <!-- Teacher Input Section (Hidden by default) -->
+        <div id="teacher-section" class="hidden mt-4 bg-red-950/80 p-6 rounded-lg border-2 border-red-500 text-center">
+            <p class="text-red-400 font-bold mb-4 text-2xl animate-pulse">יש לקרוא למורה</p>
+            <input type="password" id="teacher-code" 
+                   class="w-full px-4 py-3 bg-slate-800 border border-red-500 rounded-lg text-white text-center text-xl mb-4"
+                   placeholder="קוד חילוץ">
+            <button onclick="checkTeacherCode()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg shadow-lg transition-all active:scale-95 text-lg">
+                אשר קוד והמשך
+            </button>
+        </div>
+
+        <div id="feedback-message" class="mt-4 text-center text-lg font-semibold min-h-[1.5rem] opacity-0 transition-opacity"></div>
+    </div>
+
+    <!-- Solution & Backup Modal -->
+    <div id="solution-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm">
+        <div class="glass-panel p-8 rounded-2xl shadow-2xl max-w-md w-full border border-red-500 text-center">
+            <h2 class="text-2xl font-bold text-red-400 mb-4">לא נורא, הנה הפתרון:</h2>
+            <div id="solution-text" class="text-gray-200 mb-6 text-lg leading-relaxed bg-slate-800 p-4 rounded-lg text-right" dir="rtl">
+                <!-- Solution text gets injected here -->
+            </div>
+            <p class="text-yellow-400 font-bold mb-6">כדי להתקדם, תצטרכו לפתור שאלת חלופה באותו סגנון.</p>
+            <button onclick="switchToBackup()" class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform hover:scale-105 active:scale-95 w-full text-xl">
+                המשך לשאלת החלופה
+            </button>
+        </div>
+    </div>
+
+    <!-- Lock Opening Animation Overlay -->
+    <div id="lock-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <img id="lock-gif" src="https://media.giphy.com/media/l41lOlmOS50c609i0/giphy.gif" alt="Lock Opening" class="hidden rounded-2xl shadow-2xl max-w-xs w-full">
+        <div id="lock-emoji" class="text-9xl transition-all duration-300 hidden">🔒</div>
+    </div>
+
+    <!-- Code Modal -->
+    <div id="code-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="glass-panel p-8 rounded-2xl border-2 border-green-400 text-center max-w-sm w-full">
+            <h2 class="text-3xl font-bold text-green-400 mb-4">✨ זכיתם בספרת קוד! ✨</h2>
+            <div id="code-digit-display" class="text-7xl font-mono text-white mb-6 bg-slate-800 rounded-xl py-6 border border-slate-600 shadow-inner">
+                X
+            </div>
+            <p class="text-gray-300 mb-6 text-lg font-bold">שמרו את הספרה, תזדקקו לה כדי לפתוח את תיבת האוצר בסוף!</p>
+            <button onclick="closeCodeModal()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg text-xl shadow-lg transition-transform hover:scale-105 active:scale-95">
+                המשך למנעול הבא
+            </button>
+        </div>
+    </div>
+
+    <!-- Treasure Modal (תיבת האוצר) -->
+    <div id="treasure-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="glass-panel p-8 rounded-2xl border-2 border-yellow-400 text-center max-w-sm w-full">
+            <h2 class="text-3xl font-bold text-yellow-400 mb-4">כל הכבוד!</h2>
+            <div class="text-8xl mb-6 drop-shadow-lg animate-bounce">🏆</div>
+            <p class="text-gray-200 mb-2 text-lg font-bold">הנה הספרה האחרונה לפתיחת התיבה!</p>
+            <div id="treasure-code-display" class="text-7xl font-mono text-white mb-6 bg-slate-800 rounded-xl py-6 border border-yellow-600 shadow-inner">
+                X
+            </div>
+            <button onclick="goToVictoryScreen()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg text-xl shadow-lg transition-transform hover:scale-105 active:scale-95">
+                שלח את המסך הבא למורה
+            </button>
+        </div>
+    </div>
+
+    <!-- Victory Screen -->
+    <div id="victory-screen" class="glass-panel p-4 rounded-2xl shadow-2xl max-w-sm w-full text-center hidden flex-col items-center justify-center m-auto">
+        <h2 id="victory-title" class="text-xl font-bold text-blue-300 mb-1"></h2>
+        <p class="mb-3 text-gray-300 text-sm">נא לצלם מסך זה ולשלוח למורה.</p>
+
+        <div class="bg-slate-800 rounded-lg p-2 mb-4 w-full">
+            <table class="w-full text-right border-collapse text-sm">
+                <thead>
+                    <tr class="border-b border-slate-600 text-blue-200 text-xs">
+                        <th class="p-1 pb-2 font-semibold">שאלה</th>
+                        <th class="p-1 pb-2 text-center font-semibold">מקורית</th>
+                        <th class="p-1 pb-2 text-center font-semibold">חלופה</th>
+                        <th class="p-1 pb-2 text-center font-semibold">חילוץ</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-table-body">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <button onclick="location.reload()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-8 rounded-lg shadow-lg transition-transform hover:scale-105 active:scale-95 text-base w-full">
+            סיום המשחק
+        </button>
+    </div>
+
+    <script>
+        let levels = [];
+        
+        // מערך קודים קבועים לכל תלמיד (אינדקס 1 עד 20)
+        const studentCodes = [
+            [], // 0 (לא בשימוש)
+            [4,2,8,5], [7,1,9,4], [3,6,2,8], [9,4,7,1], [2,8,5,3],
+            [6,3,1,9], [5,9,4,2], [8,5,3,6], [1,7,8,4], [4,9,2,7],
+            [7,2,6,1], [3,8,9,5], [6,1,4,8], [9,5,7,2], [2,4,1,6],
+            [5,7,8,9], [8,3,5,1], [1,6,2,4], [4,8,9,7], [7,4,3,5]
+        ];
+
+        // פונקציה לייצור דינמי של השאלות לפי מזהה התלמיד כך שלא ניתן יהיה להעתיק
+        function generateLevels(id) {
+            const arr = [];
+            
+            // מנעול 1: x^4 = N
+            const a1 = (id % 4) + 2; const a1b = a1 === 5 ? 2 : a1 + 1;
+            arr.push({
+                main: { eq: `x^4 = ${Math.pow(a1, 4)}`, expected: [a1, -a1] },
+                backup: { eq: `x^4 = ${Math.pow(a1b, 4)}`, expected: [a1b, -a1b] },
+                hint: "הוציאו שורש מסדר זוגי (זכרו שיש שתי תשובות!).",
+                solution: `מוציאים שורש רביעי משני האגפים. מכיוון שהחזקה זוגית יש פתרון חיובי ושלילי.<br>
+                           <strong class="text-green-400">תשובות סופיות: ${a1}, -${a1}</strong>`
+            });
+
+            // מנעול 2: x^4 - N^3x = 0
+            const a2 = ((id+1) % 4) + 2; const a2b = a2 === 5 ? 2 : a2 + 1;
+            arr.push({
+                main: { eq: `x^4 - ${Math.pow(a2, 3)}x = 0`, expected: [0, a2] },
+                backup: { eq: `x^4 - ${Math.pow(a2b, 3)}x = 0`, expected: [0, a2b] },
+                hint: "הוציאו גורם משותף x מחוץ לסוגריים והשוו לאפס.",
+                solution: `נוציא גורם משותף איקס ונקבל:<br>x(x^3 - ${Math.pow(a2, 3)}) = 0<br>
+                           לכן או שאיקס שווה לאפס, או ש-x^3 = ${Math.pow(a2, 3)} ולכן איקס שווה ${a2}.<br>
+                           <strong class="text-green-400">תשובות סופיות: 0, ${a2}</strong>`
+            });
+
+            // מנעול 3: x^4 - Bx^2 + C = 0 (דו-ריבועית עם שורש יחיד ל-t)
+            const a3 = ((id+2) % 4) + 2; const a3b = a3 === 5 ? 2 : a3 + 1;
+            arr.push({
+                main: { eq: `x^4 - ${2 * Math.pow(a3, 2)}x^2 + ${Math.pow(a3, 4)} = 0`, expected: [a3, -a3] },
+                backup: { eq: `x^4 - ${2 * Math.pow(a3b, 2)}x^2 + ${Math.pow(a3b, 4)} = 0`, expected: [a3b, -a3b] },
+                hint: "משוואה דו-ריבועית. הציבו משתנה עזר (למשל t = x^2).",
+                solution: `נציב במקום איקס בריבוע אות אחרת, למשל t ונקבל משוואה ריבועית:<br>t^2 - ${2*Math.pow(a3, 2)}t + ${Math.pow(a3, 4)} = 0.<br>
+                           הפתרון ל-t הוא ${Math.pow(a3, 2)}.<br>נחזור לאיקס: x^2 = ${Math.pow(a3, 2)} ולכן הפתרונות הם ${a3} ומינוס ${a3}.<br>
+                           <strong class="text-green-400">תשובות סופיות: ${a3}, -${a3}</strong>`
+            });
+
+            // מנעול 4: x^3 = N^2x
+            const a4 = ((id+3) % 4) + 2; const a4b = a4 === 5 ? 2 : a4 + 1;
+            arr.push({
+                main: { eq: `x^3 = ${Math.pow(a4, 2)}x`, expected: [0, a4, -a4] },
+                backup: { eq: `x^3 = ${Math.pow(a4b, 2)}x`, expected: [0, a4b, -a4b] },
+                hint: "העבירו הכל לאגף אחד והוציאו גורם משותף.",
+                solution: `נעביר לאגף אחד: x^3 - ${Math.pow(a4, 2)}x = 0.<br>נוציא גורם משותף: x(x^2 - ${Math.pow(a4, 2)}) = 0.<br>
+                           מכאן שאיקס שווה לאפס או x^2 = ${Math.pow(a4, 2)} שנותן ${a4} ומינוס ${a4}.<br>
+                           <strong class="text-green-400">תשובות סופיות: 0, ${a4}, -${a4}</strong>`
+            });
+
+            // מנעול 5: דו-ריבועית עם 4 פתרונות שלמים
+            const pairs5 = [[2,3],[2,4],[2,5],[3,4],[3,5],[4,5],[1,3],[1,4],[1,5],[2,6],[3,6],[4,6],[5,6],[1,2],[2,7],[3,7],[4,7],[1,6],[2,8],[3,8]];
+            const p5 = pairs5[(id-1)%20]; const p5b = pairs5[id%20];
+            arr.push({
+                main: { eq: `x^4 - ${Math.pow(p5[0],2) + Math.pow(p5[1],2)}x^2 + ${Math.pow(p5[0],2) * Math.pow(p5[1],2)} = 0`, expected: [p5[0], -p5[0], p5[1], -p5[1]] },
+                backup: { eq: `x^4 - ${Math.pow(p5b[0],2) + Math.pow(p5b[1],2)}x^2 + ${Math.pow(p5b[0],2) * Math.pow(p5b[1],2)} = 0`, expected: [p5b[0], -p5b[0], p5b[1], -p5b[1]] },
+                hint: "הציבו t = x^2, מצאו את שני הפתרונות של t ואז חיזרו ל-x.",
+                solution: `נציב t=x^2:<br>t^2 - ${Math.pow(p5[0],2) + Math.pow(p5[1],2)}t + ${Math.pow(p5[0],2) * Math.pow(p5[1],2)} = 0.<br>
+                           הפתרונות ל-t הם ${Math.pow(p5[0],2)} ו-${Math.pow(p5[1],2)}.<br>נחזור לאיקס ונוציא שורש לכל תוצאה כדי לקבל 4 פתרונות שלמים.<br>
+                           <strong class="text-green-400">תשובות סופיות: ${p5[0]}, -${p5[0]}, ${p5[1]}, -${p5[1]}</strong>`
+            });
+
+            // מנעול 6: שורש אי-זוגי שלילי
+            const a6 = (id % 5) + 2; const a6b = a6 === 6 ? 2 : a6 + 1;
+            arr.push({
+                main: { eq: `x^3 = -${Math.pow(a6, 3)}`, expected: [-a6] },
+                backup: { eq: `x^3 = -${Math.pow(a6b, 3)}`, expected: [-a6b] },
+                hint: "שורש אי-זוגי שומר על סימן המספר המקורי.",
+                solution: `כשמוציאים שורש שלישי (אי זוגי) ממספר שלילי התוצאה נשארת שלילית.<br>
+                           <strong class="text-green-400">תשובה סופית: -${a6}</strong>`
+            });
+
+            // מנעול 7: דו ריבועית משולבת עם שברים רציונליים
+            const getP7 = (idx) => {
+                let c = (idx%2)+2; let a = (idx%3)+2; let b = (idx%5)+1;
+                if(b%c === 0) b++;
+                return {c, a, b};
+            };
+            const p7 = getP7(id-1); const p7b = getP7(id);
+            arr.push({
+                main: { eq: `${Math.pow(p7.c,2)}x^4 - ${Math.pow(p7.c,2) * Math.pow(p7.a,2) + Math.pow(p7.b,2)}x^2 + ${Math.pow(p7.a,2) * Math.pow(p7.b,2)} = 0`, expected: [p7.a, -p7.a, p7.b/p7.c, -p7.b/p7.c] },
+                backup: { eq: `${Math.pow(p7b.c,2)}x^4 - ${Math.pow(p7b.c,2) * Math.pow(p7b.a,2) + Math.pow(p7b.b,2)}x^2 + ${Math.pow(p7b.a,2) * Math.pow(p7b.b,2)} = 0`, expected: [p7b.a, -p7b.a, p7b.b/p7b.c, -p7b.b/p7b.c] },
+                hint: "משוואה דו-ריבועית. ייתכן שתקבלו שברים בפתרונות, וזה בסדר!",
+                solution: `נציב t=x^2:<br>${Math.pow(p7.c,2)}t^2 - ${Math.pow(p7.c,2) * Math.pow(p7.a,2) + Math.pow(p7.b,2)}t + ${Math.pow(p7.a,2) * Math.pow(p7.b,2)} = 0.<br>
+                           פתרונות t לפי נוסחת השורשים הם ${Math.pow(p7.a,2)} ו-${Math.pow(p7.b,2)}/${Math.pow(p7.c,2)}.<br>
+                           מוציאים שורש לכל תוצאה כדי לקבל 4 פתרונות.<br>
+                           <strong class="text-green-400">תשובות סופיות: ${p7.a}, -${p7.a}, ${p7.b}/${p7.c}, -${p7.b}/${p7.c}</strong>`
+            });
+
+            // מנעול 8: סגנון Kx^4 - M^2 * K * x^2 = 0
+            const k8 = (id % 3) + 2; const a8 = ((id+1) % 4) + 2;
+            const k8b = k8 === 4 ? 2 : k8 + 1; const a8b = a8 === 5 ? 2 : a8 + 1;
+            arr.push({
+                main: { eq: `${k8}x^4 - ${k8 * Math.pow(a8,2)}x^2 = 0`, expected: [0, a8, -a8] },
+                backup: { eq: `${k8b}x^4 - ${k8b * Math.pow(a8b,2)}x^2 = 0`, expected: [0, a8b, -a8b] },
+                hint: "הוציאו גורם משותף (מספר כפול x בריבוע) מחוץ לסוגריים.",
+                solution: `נוציא גורם משותף ${k8}x^2:<br>${k8}x^2(x^2 - ${Math.pow(a8,2)}) = 0.<br>
+                           מכאן שחלק אחד שווה אפס (${k8}x^2=0 ולכן x=0).<br>
+                           או שהחלק השני שווה אפס (x^2 - ${Math.pow(a8,2)} = 0 ולכן איקס שווה ${a8} או מינוס ${a8}).<br>
+                           <strong class="text-green-400">תשובות סופיות: 0, ${a8}, -${a8}</strong>`
+            });
+            return arr;
+        }
+
+        let currentLevel = 0;
+        let score = 0;
+        let attempts = 0;
+        let isBackup = false;
+        let playerName = "";
+        let studentId = 1;
+        let collectedCodes = [];
+        let pendingNextLevelAction = null;
+        
+        let gameStats = [];
+
+        // Audio Setup
+        let synth;
+        async function initAudio() {
+            await Tone.start();
+            synth = new Tone.PolySynth(Tone.Synth).toDestination();
+        }
+        function playSuccessSound() {
+            if(synth) {
+                const now = Tone.now();
+                synth.triggerAttackRelease("C5", "8n", now);
+                synth.triggerAttackRelease("E5", "8n", now + 0.15);
+                synth.triggerAttackRelease("G5", "4n", now + 0.30);
+            }
+        }
+        function playErrorSound() {
+            if(synth) synth.triggerAttackRelease("C3", "8n", Tone.now());
+        }
+        function playUnlockSound() {
+            if(synth) synth.triggerAttackRelease("A4", "16n", Tone.now());
+        }
+
+        function startGame() {
+            const nameInput = document.getElementById('student-name').value.trim();
+            const idInput = parseInt(document.getElementById('student-id').value);
+            
+            if (isNaN(idInput) || idInput < 1 || idInput > 20) {
+                alert("נא להזין מספר תלמיד תקין (1-20)");
+                return;
+            }
+
+            playerName = nameInput || "גיבורים";
+            studentId = idInput;
+            levels = generateLevels(studentId);
+            collectedCodes = [];
+            
+            initAudio();
+            
+            gameStats = levels.map(() => ({ originalAttempts: 0, altAttempts: 0, teacherBypass: false }));
+            
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            loadLevel();
+        }
+
+        function loadLevel() {
+            const levelObj = levels[currentLevel];
+            const eqData = isBackup ? levelObj.backup : levelObj.main;
+            
+            document.getElementById('level-display').innerText = currentLevel + 1;
+            document.getElementById('greeting-text').innerText = `בהצלחה, ${playerName}!`;
+            
+            const backupIndicator = document.getElementById('backup-indicator');
+            if (isBackup) backupIndicator.classList.remove('hidden');
+            else backupIndicator.classList.add('hidden');
+            
+            katex.render(eqData.eq, document.getElementById('equation-container'), {
+                throwOnError: false,
+                displayMode: true
+            });
+            
+            const input = document.getElementById('answer-input');
+            input.value = '';
+            input.disabled = false;
+            input.classList.remove('border-red-500', 'border-green-500', 'border-yellow-500');
+            input.classList.add('border-slate-600');
+            
+            // הצגת כפתור "בדוק תשובה" והסתרת כפתור סיום המשחק בתחילת כל שלב
+            document.getElementById('submit-btn').classList.remove('hidden');
+            document.getElementById('final-stage-btn').classList.add('hidden');
+            
+            document.getElementById('student-input-section').classList.remove('hidden');
+            document.getElementById('teacher-section').classList.add('hidden');
+            document.getElementById('teacher-code').value = '';
+            
+            const progress = (currentLevel / levels.length) * 100;
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+            
+            attempts = 0;
+            hideFeedback();
+            input.focus();
+        }
+
+        function parseUserInput(inputStr) {
+            let parts = inputStr.split(',');
+            let results = [];
+            for(let part of parts) {
+                part = part.trim();
+                if(!part) continue;
+                try {
+                    if (/^[-+]?[0-9]+(\.[0-9]+)?(\/[-+]?[0-9]+)?$/.test(part)) {
+                        let val = Function('"use strict";return (' + part + ')')();
+                        if (typeof val === 'number' && !isNaN(val)) results.push(val);
+                    }
+                } catch(e) {}
+            }
+            return results;
+        }
+
+        function areSetsEqual(userVals, expectedVals) {
+            if(userVals.length !== expectedVals.length) return false;
+            let matched = new Array(userVals.length).fill(false);
+            for(let exp of expectedVals) {
+                let foundIndex = userVals.findIndex((usr, idx) => !matched[idx] && Math.abs(usr - exp) < 0.001);
+                if(foundIndex !== -1) matched[foundIndex] = true;
+                else return false;
+            }
+            return true;
+        }
+
+        function checkAnswer() {
+            const levelObj = levels[currentLevel];
+            const eqData = isBackup ? levelObj.backup : levelObj.main;
+            const inputStr = document.getElementById('answer-input').value;
+            const userVals = parseUserInput(inputStr);
+            const inputEl = document.getElementById('answer-input');
+            
+            attempts++;
+            
+            if(isBackup) {
+                gameStats[currentLevel].altAttempts++;
+            } else {
+                gameStats[currentLevel].originalAttempts++;
+            }
+            
+            if (areSetsEqual(userVals, eqData.expected)) {
+                score += isBackup ? Math.max(5 - attempts, 1) : Math.max(10 - (attempts * 2), 3);
+                document.getElementById('score-display').innerText = score;
+                
+                inputEl.classList.replace('border-slate-600', 'border-green-500');
+                inputEl.classList.replace('border-red-500', 'border-green-500');
+                inputEl.classList.replace('border-yellow-500', 'border-green-500');
+                
+                if (currentLevel === levels.length - 1) {
+                    showFeedback("נכון מאוד!", "text-green-400");
+                    document.getElementById('submit-btn').classList.add('hidden');
+                    document.getElementById('final-stage-btn').classList.remove('hidden');
+                    playSuccessSound();
+                } else {
+                    showFeedback("נכון מאוד! המנעול נפתח.", "text-green-400");
+                    triggerLockUnlockAnimation();
+                }
+            } else {
+                playErrorSound();
+                inputEl.classList.add('border-red-500', 'animate-pulse');
+                setTimeout(() => inputEl.classList.remove('animate-pulse'), 500);
+
+                if(isBackup) {
+                    if(attempts === 1) {
+                        showFeedback("תשובה שגויה, נסו שוב.", "text-red-400");
+                    } else if (attempts === 2) {
+                        inputEl.classList.replace('border-red-500', 'border-yellow-500');
+                        showFeedback("רמז: " + levelObj.hint, "text-yellow-400 text-base");
+                    } else if (attempts >= 3) {
+                        showTeacherBypass();
+                    }
+                } else {
+                    if (attempts === 1) {
+                        showFeedback("תשובה שגויה, נסו שוב.", "text-red-400");
+                    } else if (attempts === 2) {
+                        inputEl.classList.replace('border-red-500', 'border-yellow-500');
+                        showFeedback("רמז: " + levelObj.hint, "text-yellow-400 text-base");
+                    } else if (attempts >= 3) {
+                        showSolutionModal();
+                    }
+                }
+            }
+        }
+
+        function showSolutionModal() {
+            document.getElementById('solution-text').innerHTML = levels[currentLevel].solution;
+            document.getElementById('solution-modal').classList.remove('hidden');
+        }
+
+        function switchToBackup() {
+            isBackup = true;
+            document.getElementById('solution-modal').classList.add('hidden');
+            hideFeedback();
+            loadLevel(); 
+        }
+
+        function showTeacherBypass() {
+            document.getElementById('student-input-section').classList.add('hidden');
+            document.getElementById('teacher-code').value = '';
+            document.getElementById('teacher-section').classList.remove('hidden');
+            hideFeedback();
+        }
+
+        function checkTeacherCode() {
+            const code = document.getElementById('teacher-code').value;
+            if(code === '1911') {
+                gameStats[currentLevel].teacherBypass = true;
+                
+                document.getElementById('teacher-section').classList.add('hidden');
+                document.getElementById('student-input-section').classList.remove('hidden');
+                
+                attempts = 0;
+                const inputEl = document.getElementById('answer-input');
+                inputEl.value = '';
+                inputEl.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
+                inputEl.classList.add('border-slate-600');
+                inputEl.focus();
+                
+                document.getElementById('teacher-code').value = '';
+                
+                showFeedback("חולצת על ידי המורה! נסו לפתור את התרגיל שוב.", "text-green-400");
+            } else {
+                playErrorSound();
+                alert("קוד שגוי.");
+                document.getElementById('teacher-code').value = '';
+            }
+        }
+
+        function triggerLockUnlockAnimation() {
+            const overlay = document.getElementById('lock-overlay');
+            const gif = document.getElementById('lock-gif');
+            const emoji = document.getElementById('lock-emoji');
+            
+            overlay.classList.remove('hidden');
+            gif.classList.add('hidden');
+            emoji.classList.remove('hidden');
+            emoji.innerText = '🔒';
+            emoji.classList.remove('animate-unlock');
+            
+            setTimeout(() => {
+                playUnlockSound();
+                emoji.innerText = '🔓';
+                emoji.classList.add('animate-unlock');
+                playSuccessSound();
+            }, 600);
+
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                emoji.classList.add('hidden');
+                progressToNextLevel();
+            }, 2000);
+        }
+
+        function progressToNextLevel() {
+            const prevLevel = currentLevel;
+            currentLevel++;
+            isBackup = false;
+            
+            const targetLevels = [1, 3, 5];
+            
+            if (targetLevels.includes(prevLevel)) {
+                const codeIndex = targetLevels.indexOf(prevLevel);
+                const codeDigit = studentCodes[studentId][codeIndex];
+                collectedCodes.push(codeDigit);
+                
+                showCodeModal(codeDigit, () => {
+                    if (currentLevel < levels.length) {
+                        loadLevel();
+                    }
+                });
+            } else {
+                if (currentLevel < levels.length) {
+                    loadLevel();
+                }
+            }
+        }
+
+        function showTreasureScreen() {
+            const codeDigit = studentCodes[studentId][3];
+            if (collectedCodes.length < 4) {
+                collectedCodes.push(codeDigit);
+            }
+            
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('treasure-modal').classList.remove('hidden');
+            document.getElementById('treasure-code-display').innerText = codeDigit;
+            
+            if(synth) synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "2n", Tone.now());
+        }
+
+        function goToVictoryScreen() {
+            document.getElementById('treasure-modal').classList.add('hidden');
+            showVictory();
+        }
+
+        function showCodeModal(digit, nextAction) {
+            document.getElementById('code-digit-display').innerText = digit;
+            document.getElementById('code-modal').classList.remove('hidden');
+            if(synth) synth.triggerAttackRelease(["C5", "E5", "G5"], "4n", Tone.now());
+            pendingNextLevelAction = nextAction;
+        }
+
+        function closeCodeModal() {
+            document.getElementById('code-modal').classList.add('hidden');
+            if (pendingNextLevelAction) pendingNextLevelAction();
+        }
+
+        function showFeedback(msg, colorClass) {
+            const feedbackEl = document.getElementById('feedback-message');
+            feedbackEl.innerHTML = msg;
+            feedbackEl.className = `mt-4 text-center font-bold min-h-[1.5rem] transition-opacity duration-300 opacity-100 ${colorClass}`;
+        }
+        
+        function hideFeedback() {
+            const feedbackEl = document.getElementById('feedback-message');
+            feedbackEl.className = 'mt-4 text-center font-bold min-h-[1.5rem] transition-opacity duration-300 opacity-0';
+            feedbackEl.innerHTML = '';
+        }
+
+        function showVictory() {
+            document.getElementById('game-screen').classList.add('hidden');
+            
+            // התאמה למסכים קטנים כדי שהטבלה תתחיל מהחלק העליון
+            document.body.classList.remove('justify-center');
+            document.body.classList.add('justify-start', 'pt-6');
+
+            const victoryScreen = document.getElementById('victory-screen');
+            victoryScreen.classList.remove('hidden');
+            victoryScreen.classList.add('flex');
+            
+            document.getElementById('victory-title').innerText = `סיכום נתונים: ${playerName}`;
+            
+            populateStatsTable();
+            fireConfetti();
+        }
+
+        function populateStatsTable() {
+            const tbody = document.getElementById('stats-table-body');
+            tbody.innerHTML = '';
+            
+            gameStats.forEach((stat, index) => {
+                const row = document.createElement('tr');
+                row.className = "border-b border-slate-700/50 hover:bg-slate-700/30";
+                
+                row.innerHTML = `
+                    <td class="p-2 font-bold">${index + 1}</td>
+                    <td class="p-2 text-center">${stat.originalAttempts > 0 ? stat.originalAttempts : '-'}</td>
+                    <td class="p-2 text-center">${stat.altAttempts > 0 ? stat.altAttempts : '-'}</td>
+                    <td class="p-2 text-center">${stat.teacherBypass ? '<span class="text-red-400">כן</span>' : 'לא'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function fireConfetti() {
+            var duration = 3 * 1000;
+            var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+
+            function randomInRange(min, max) {
+              return Math.random() * (max - min) + min;
+            }
+
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+
+                if (timeLeft <= 0) {
+                    return clearInterval(interval);
+                }
+
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount,
+                    origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
+                }));
+                confetti(Object.assign({}, defaults, { particleCount,
+                    origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
+                }));
+            }, 250);
+        }
+    </script>
+</body>
+</html>
